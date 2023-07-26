@@ -1,0 +1,434 @@
+= Getting Started with the Hazelcast .NET Client
+// Add required variables
+:page-layout: tutorial
+:page-product: platform
+:page-categories: Get Started
+:page-lang: java
+:page-enterprise:
+:page-est-time: 5-10 mins
+:description: In this tutorial you will see how to connect with the Hazelcast Java client and manipulate a map.
+
+== What You'll Learn
+
+{description}
+
+== Before you Begin
+
+Before starting this tutorial, make sure the following prerequisites are met:
+
+* JDK 11.0 or above
+* https://hazelcast.com/products/viridian/[Hazelcast Viridian Cloud Account]
+* An IDE
+
+== Start a Hazelcast Viridian Cloud Cluster
+
+1. Sign up for a Hazelcast Viridian Cloud account (Free accounts are available).
+2. Log in to your Hazelcast Viridian Cloud account and navigate to your https://viridian.hazelcast.com[cluster list].
+3. Create a new cluster or start an existing one.
+
+== Setup a Hazelcast Client
+
+1. Use the quick connection guide to download the preconfigured Java sample client.
+2. Follow the instructions on the quick connection guide to start using your cluster.
+
+To understand and use the client, review the https://docs.hazelcast.com/hazelcast/5.3/clients/java#hide-nav[Java client documentation] to better understand what is possible.
+
+== Understanding the Java Client
+
+The following section creates and starts a Hazelcast client with default configuration, before shutting down when the program exits.
+
+[source,java]
+----
+package com.hazelcast.cloud;
+
+import java.util.Properties;
+
+import com.hazelcast.client.HazelcastClient;
+import com.hazelcast.client.config.ClientConfig;
+import com.hazelcast.config.SSLConfig;
+import com.hazelcast.core.HazelcastInstance;
+
+public class ClientWithSsl {
+
+    public static void main(String[] args) throws Exception {
+        ClientConfig config = new ClientConfig();
+
+        // Your Viridian cluster name.
+        config.setClusterName("YOUR_CLUSTER_NAME");
+
+        // Your discovery token to connect Viridian cluster.
+        config.getNetworkConfig().getCloudConfig()
+                .setDiscoveryToken("YOUR_CLUSTER_DISCOVERY_TOKEN")
+                .setEnabled(true);
+
+        // // Configure SSL
+        ClassLoader classLoader = ClientWithSsl.class.getClassLoader();
+        Properties props = new Properties();
+        props.setProperty("javax.net.ssl.keyStore", classLoader.getResource("client.keystore").toURI().getPath());
+        props.setProperty("javax.net.ssl.keyStorePassword", "YOUR_SSL_PASSWORD");
+        props.setProperty("javax.net.ssl.trustStore",
+                classLoader.getResource("client.truststore").toURI().getPath());
+        props.setProperty("javax.net.ssl.trustStorePassword", "YOUR_SSL_PASSWORD");
+        config.getNetworkConfig().setSSLConfig(new SSLConfig().setEnabled(true).setProperties(props));
+
+        HazelcastInstance client = HazelcastClient.newHazelcastClient(config);
+
+    }
+}
+----
+
+== Understanding the Hazelcast SQL API
+
+Hazelcast SQL API is a Calcite SQL based interface to allow you to interact with Hazelcast much like any other datastore.
+
+In the following example, we will create a map and insert into it, entries where the keys are ids and the values are defined as an object representing a city.
+
+The City object DTO is defined as follows:
+[source,java]
+----
+package com.hazelcast.cloud.model;
+
+public final class City {
+
+    private final String country;
+
+    private final String city;
+
+    private final int population;
+
+    public City(String country, String city, int population) {
+        this.country = country;
+        this.city = city;
+        this.population = population;
+    }
+
+    public String getCountry() {
+        return country;
+    }
+
+    public String getCity() {
+        return city;
+    }
+
+    public int getPopulation() {
+        return population;
+    }
+
+}
+----
+
+And the serializer for the City object is defined as follows:
+[source,java]
+----
+package com.hazelcast.cloud.model;
+
+import com.hazelcast.nio.serialization.compact.CompactReader;
+import com.hazelcast.nio.serialization.compact.CompactSerializer;
+import com.hazelcast.nio.serialization.compact.CompactWriter;
+
+public class CitySerializer implements CompactSerializer<City> {
+    @Override
+    public City read(CompactReader compactReader) {
+        return new City(compactReader.readString("country"),
+                        compactReader.readString("city"),
+                        compactReader.readInt32("population"));
+    }
+
+    @Override
+    public void write(CompactWriter compactWriter, City city) {
+        compactWriter.writeString("country", city.getCountry());
+        compactWriter.writeString("city", city.getCity());
+        compactWriter.writeInt32("population", city.getPopulation());
+    }
+
+    @Override
+    public String getTypeName() {
+        return "city";
+    }
+
+    @Override
+    public Class<City> getCompactClass() {
+        return City.class;
+    }
+}
+----
+
+[source,java]
+----
+package com.hazelcast.cloud;
+
+import java.util.Properties;
+
+import com.hazelcast.client.HazelcastClient;
+import com.hazelcast.client.config.ClientConfig;
+import com.hazelcast.cloud.model.City;
+import com.hazelcast.cloud.model.CitySerializer;
+import com.hazelcast.config.SSLConfig;
+import com.hazelcast.core.HazelcastInstance;
+import com.hazelcast.sql.SqlResult;
+import com.hazelcast.sql.SqlRow;
+import com.hazelcast.sql.SqlService;
+
+public class ClientWithSsl {
+
+    public static void main(String[] args) throws Exception {
+        ClientConfig config = new ClientConfig();
+
+        // Your Viridian cluster name.
+        config.setClusterName("YOUR_CLUSTER_NAME");
+
+        // Your discovery token to connect Viridian cluster.
+        config.getNetworkConfig().getCloudConfig()
+                .setDiscoveryToken("YOUR_CLUSTER_DISCOVERY_TOKEN")
+                .setEnabled(true);
+
+        // // Configure SSL
+        ClassLoader classLoader = ClientWithSsl.class.getClassLoader();
+        Properties props = new Properties();
+        props.setProperty("javax.net.ssl.keyStore", classLoader.getResource("client.keystore").toURI().getPath());
+        props.setProperty("javax.net.ssl.keyStorePassword", "YOUR_SSL_PASSWORD");
+        props.setProperty("javax.net.ssl.trustStore",
+                classLoader.getResource("client.truststore").toURI().getPath());
+        props.setProperty("javax.net.ssl.trustStorePassword", "YOUR_SSL_PASSWORD");
+        config.getNetworkConfig().setSSLConfig(new SSLConfig().setEnabled(true).setProperties(props));
+
+        // Register serializer of the City.
+        config.getSerializationConfig().getCompactSerializationConfig().addSerializer(new CitySerializer());
+
+        HazelcastInstance client = HazelcastClient.newHazelcastClient(config);
+
+        try {
+            // Create a map on the cluster
+            createMapping(client.getSql());
+
+            // Add some data
+            insertCities(client);
+
+            // Output the data
+            fetchCities(client.getSql());
+
+        } finally {
+            client.shutdown();
+        }
+    }
+
+    private static void createMapping(SqlService sqlService) {
+        // See: https://docs.hazelcast.com/hazelcast/latest/sql/mapping-to-maps#compact-objects
+        System.out.print("\nCreating mapping for cities...");
+
+        String mappingSql = ""
+                + "CREATE OR REPLACE MAPPING cities("
+                + "     __key INT,"
+                + "     country VARCHAR,"
+                + "     city VARCHAR,"
+                + "     population INT"
+                + ") TYPE IMap"
+                + " OPTIONS ("
+                + "     'keyFormat' = 'int',"
+                + "     'valueFormat' = 'compact',"
+                + "     'valueCompactTypeName' = 'city'"
+                + " )";
+
+        try (SqlResult ignored = sqlService.execute(mappingSql)) {
+            System.out.print("OK.");
+        } catch (Exception ex) {
+            System.out.print("FAILED. " + ex.getMessage());
+        }
+    }
+
+    private static void insertCities(HazelcastInstance client) {
+        try {
+            System.out.print("\nInserting cities into 'cities' map...");
+
+            String insertQuery = "INSERT INTO cities "
+                + "(__key, city, country, population) VALUES"
+                + "(1, 'London', 'United Kingdom', 9540576),"
+                + "(2, 'Manchester', 'United Kingdom', 2770434),"
+                + "(3, 'New York', 'United States', 19223191),"
+                + "(4, 'Los Angeles', 'United States', 3985520),"
+                + "(5, 'Istanbul', 'Türkiye', 15636243),"
+                + "(6, 'Ankara', 'Türkiye', 5309690),"
+                + "(7, 'Sao Paulo ', 'Brazil', 22429800)";
+
+            SqlResult result = client.getSql().execute(insertQuery);
+            System.out.print("OK.");
+        } catch (Exception ex) {
+            System.out.print("FAILED. " + ex.getMessage());
+        }
+    }
+
+    private static void fetchCities(SqlService sqlService) {
+
+        System.out.print("\nFetching cities via SQL...");
+
+        try (SqlResult result = sqlService.execute("SELECT __key, this FROM cities")) {
+            System.out.print("OK.\n");
+            System.out.println("--Results of 'SELECT __key, this FROM cities'");
+
+            System.out.printf("%4s | %20s | %20s | %15s |%n", "id", "country", "city", "population");
+            for (SqlRow row : result) {
+                int id = row.getObject("__key");
+                City c = row.getObject("this");
+                System.out.printf("%4s | %20s | %20s | %15s |%n",
+                        id,
+                        c.getCountry(),
+                        c.getCity(),
+                        c.getPopulation()
+                );
+            }
+        } catch (Exception ex) {
+            System.out.print("FAILED. " + ex.getMessage());
+        }
+    }
+}
+----
+
+The output of this code is given below:
+
+[source,bash]
+----
+Creating the mapping for cities...OK.
+Inserting cities into 'cities' map...OK.
+Fetching cities via SQL...OK.
+--Results of 'SELECT __key, this FROM cities'
+|   id | country              | city                 | population      |
+|    2 | United Kingdom       | Manchester           | 2770434         |
+|    6 | Türkiye              | Ankara               | 5309690         |
+|    1 | United Kingdom       | London               | 9540576         |
+|    7 | Brazil               | Sao Paulo            | 22429800        |
+|    4 | United States        | Los Angeles          | 3985520         |
+|    5 | Türkiye              | Istanbul             | 15636243        |
+|    3 | United States        | New York             | 19223191        |
+----
+
+NOTE: Ordering of the keys is NOT enforced and results may NOT correspond to insertion order.
+
+== Understanding the Hazelcast IMap API
+
+A Hazelcast IMap is a distributed key-value store, similar to java.util.Map. You can store key-value pairs in a Hazelcast IMap.
+
+In the following example, we will work with map entries where the keys are ids and the values are defined as an object representing a city.
+
+[source,java]
+----
+package com.hazelcast.cloud;
+
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+
+import com.hazelcast.client.HazelcastClient;
+import com.hazelcast.client.config.ClientConfig;
+import com.hazelcast.cloud.model.CitySerializer;
+import com.hazelcast.config.SSLConfig;
+import com.hazelcast.core.HazelcastInstance;
+import com.hazelcast.map.IMap;
+
+public class ClientWithSsl {
+    public static void main(String[] args) throws Exception {
+        ClientConfig config = new ClientConfig();
+
+        // Your Viridian cluster name.
+        config.setClusterName("YOUR_CLUSTER_NAME");
+
+        // Your discovery token to connect Viridian cluster.
+        config.getNetworkConfig().getCloudConfig()
+                .setDiscoveryToken("YOUR_CLUSTER_DISCOVERY_TOKEN")
+                .setEnabled(true);
+
+        // // Configure SSL
+        ClassLoader classLoader = ClientWithSsl.class.getClassLoader();
+        Properties props = new Properties();
+        props.setProperty("javax.net.ssl.keyStore", classLoader.getResource("client.keystore").toURI().getPath());
+        props.setProperty("javax.net.ssl.keyStorePassword", "YOUR_SSL_PASSWORD");
+        props.setProperty("javax.net.ssl.trustStore",
+                classLoader.getResource("client.truststore").toURI().getPath());
+        props.setProperty("javax.net.ssl.trustStorePassword", "YOUR_SSL_PASSWORD");
+        config.getNetworkConfig().setSSLConfig(new SSLConfig().setEnabled(true).setProperties(props));
+
+        // Register serializer of the City.
+        config.getSerializationConfig().getCompactSerializationConfig().addSerializer(new CitySerializer());
+
+        HazelcastInstance client = HazelcastClient.newHazelcastClient(config);
+
+        try {
+            // Create a map on the cluster
+            IMap<Integer, String> citiesMap = client.getMap("cities");
+
+            // Add some data
+            citiesMap.put(1, "London");
+            citiesMap.put(2, "New York");
+            citiesMap.put(3, "Tokyo");
+
+            // Output the data
+            Set<Map.Entry<Integer, String>> entries = citiesMap.entrySet();
+
+            for (Map.Entry<Integer, String> entry : entries)
+            {
+                System.out.println(entry.getKey() + " -> " + entry.getValue() );
+            }
+        } finally {
+            client.shutdown();
+        }
+    }
+}
+----
+
+Following line returns a map proxy object for the `cities` map:
+
+[source,java]
+----
+            // Create a map on the cluster
+            IMap<Integer, String> citiesMap = client.getMap("cities");
+----
+
+If `cities` doesn't exist, it will be automatically created. All the clients connected to the same cluster will have access to the same map.
+
+With these lines, client adds data to the `cities` map. The first parameter is the key of the entry, the second one is the value.
+
+[source,java]
+----
+            // Add some data
+            citiesMap.put(1, "London");
+            citiesMap.put(2, "New York");
+            citiesMap.put(3, "Tokyo");
+----
+
+Then, we get the data using the `entrySet()` method and iterate over the results.
+
+[source,java]
+----
+            // Output the data
+            Set<Map.Entry<Integer, String>> entries = citiesMap.entrySet();
+
+            for (Map.Entry<Integer, String> entry : entries)
+            {
+                System.out.println(entry.getKey() + " -> " + entry.getValue() );
+            }
+----
+
+The output of this code is given below:
+
+[source,bash]
+----
+2 -> New York
+1 -> London
+3 -> Tokyo
+----
+
+NOTE: Ordering of the keys is NOT enforced and results may NOT correspond to entry order.
+
+
+== Summary
+
+In this tutorial, you learned how to get started with the Hazelcast Java Client and put data into a distributed map.
+
+== See Also
+
+There are a lot of things that you can do with the Java Client. For more, such as how you can query a map with predicates and SQL,
+check out our https://github.com/hazelcast/hazelcast[Hazelcast repository] and our https://docs.hazelcast.com/hazelcast/5.3/clients/java#hide-nav[Java client documentation] to better understand what is possible.
+
+If you have any questions, suggestions, or feedback please do not hesitate to reach out to us via https://slack.hazelcast.com/[Hazelcast Community Slack].
+Also, please take a look at https://github.com/hazelcast/hazelcast/issues[the issue list] if you would like to contribute to the client.
+
+

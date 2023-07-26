@@ -1,4 +1,4 @@
-= Getting Started with the Hazelcast .NET Client
+= Getting Started with the Hazelcast Java Client
 // Add required variables
 :page-layout: tutorial
 :page-product: platform
